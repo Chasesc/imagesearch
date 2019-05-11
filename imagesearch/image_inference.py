@@ -17,7 +17,7 @@ models = {
                        args=(),
                        kwargs=dict()),
 
-    'xception' : dict(module=applications.xception,
+    'xception' :  dict(module=applications.xception,
                        model='Xception',
                        features_layer='avg_pool',
                        shape=(299, 299),

@@ -19,7 +19,6 @@ class ImageSearch(object):
             image = str(image) # ensure we have a string and not a pathlib path
 
             pil_image = image_utils.load(image)
-
             top_three_preds, features = self._inference.predict(pil_image)
 
             image_info = {
