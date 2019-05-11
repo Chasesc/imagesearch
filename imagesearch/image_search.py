@@ -1,7 +1,6 @@
 '''
 '''
 from pathlib import Path
-from skimage.io import imread
 import numpy as np
 
 import image_inference
