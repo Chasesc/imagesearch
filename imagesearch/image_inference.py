@@ -2,23 +2,25 @@
 Handles ML inference of images. (extract features, class, etc)
 '''
 
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input
+from tensorflow.keras import applications
 import numpy as np
 
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras import applications
+import image_utils
 
 models = {
     'mobilenet' : dict(module=applications.mobilenet,
                        model='MobileNet',
                        features_layer='global_average_pooling2d',
-                       shape=(224, 224, 3),
+                       shape=(224, 224),
                        args=(),
                        kwargs=dict()),
 
     'xception' : dict(module=applications.xception,
                        model='Xception',
-                       features_layer='global_average_pooling2d',
-                       shape=(299, 299, 3),
+                       features_layer='avg_pool',
+                       shape=(299, 299),
                        args=(),
                        kwargs=dict())
 }
@@ -36,19 +38,42 @@ class ImageInference(object):
 
         self.model_module = model_info['module']
         self.image_shape  = model_info['shape']
+        features_layer    = model_info['features_layer']
 
         self.decode_predictions = getattr(self.model_module, 'decode_predictions')
         self.preprocess_input   = getattr(self.model_module, 'preprocess_input')
-        self.model              = getattr(self.model_module, model_info['model'])(*args, **kwargs)
+        model                   = getattr(self.model_module, model_info['model'])(*args, **kwargs)
+        
+        # Input: Image, Output: Vector of features
+        self.features_model   = Model(inputs=model.input, outputs=model.get_layer(features_layer).output)
 
-        if not quiet: self.model.summary()
+        features_layer_idx = [l.name for l in model.layers].index(features_layer)
+        input_shape = model.layers[features_layer_idx+1].get_input_shape_at(0)
+
+        prediction_model_input = Input(shape=input_shape)
+
+        x = prediction_model_input
+        for layer in model.layers[features_layer_idx+1:]:
+            x = layer(x)
+
+        # Input: Vector of features, Output: prediction probabilities
+        self.prediction_model = Model(inputs=prediction_model_input, outputs=x)
+
+        if not quiet:
+            print(self.features_model.summary())
+            print('-'*50)
+            print(self.prediction_model.summary())      
 
     def predict(self, img):
         # apply transforms
-        img = image.load_img(img, target_size=self.image_shape)
-        img = image.img_to_array(img)
+        img = image_utils.resize(img, self.image_shape)
+        img = image_utils.pil_to_array(img)
         img = np.expand_dims(img, axis=0)
         img = self.preprocess_input(img)
 
-        preds = self.decode_predictions(self.model.predict(img), top=3)[0]
-        return preds
+        features = self.features_model.predict(img)
+
+        preds = self.prediction_model.predict(np.expand_dims(features, axis=0)).reshape((1, 1000))
+        preds = self.decode_predictions(preds, top=3)[0]
+
+        return preds, features
